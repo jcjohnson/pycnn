@@ -46,3 +46,4 @@ class FullyConnectedLayer(BaseLayer):
     # Compute derivative of objective with respect to parameters
     self.weights.diffs = np.einsum('ik,jk', delta_y, bottom_blobs[0].vals)
     self.bias.diffs = np.sum(delta_y, axis=1, keepdims=True)
+

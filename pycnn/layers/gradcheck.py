@@ -79,3 +79,4 @@ def gradient_check_helper(layer_factory, param_name=None, num_tests=10,
     if diff > threshold:
       return False
   return True
+

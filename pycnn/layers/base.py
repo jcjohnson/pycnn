@@ -37,3 +37,4 @@ class BaseLayer(object):
     top_blobs: A list of Blobs
     """
     raise NotImplementedError()
+

@@ -38,3 +38,4 @@ class Blob(object):
     if new_diffs.shape != self.shape:
       raise ValueError('Cannot set diffs; shape mismatch')
     self._diffs = new_diffs
+

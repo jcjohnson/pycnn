@@ -56,3 +56,4 @@ class BlobTest(unittest.TestCase):
     blob = Blob(shape)
     with self.assertRaises(ValueError):
       blob.vals = np.array([[1, 2], [4, 5]])
+

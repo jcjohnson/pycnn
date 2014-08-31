@@ -44,3 +44,4 @@ class FullyConnectedLayerTest(unittest.TestCase):
 
   def bias_gradient_numeric_test(self):
     gradient_check_helper(self.get_random_layer, param_name='bias')
+
