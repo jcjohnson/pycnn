@@ -7,7 +7,7 @@ def numeric_derivative(layer, blob, bottom_blob, top_blob):
   Numerically compute the derivative of blob using the forward pass of the
   layer.
   """
-  EPSILON = 0.01
+  EPSILON = 0.001
   it = np.nditer(blob.diffs, op_flags=['readwrite'], flags=['multi_index'])
   start_vals = blob.vals.copy()
   while not it.finished:
@@ -45,9 +45,9 @@ def gradient_check(layer, param_name=None, batch_size=None):
     batch_size = random.randint(2, 10)
 
   bottom_shape = layer.get_bottom_shapes()[0] + (batch_size,)
-  bottom_blob = Blob(bottom_shape, vals=np.random.randn(*bottom_shape)) 
+  bottom_blob = Blob(bottom_shape, vals=10.0*np.random.randn(*bottom_shape)) 
   top_shape = layer.get_top_shapes()[0] + (batch_size,)
-  top_blob = Blob(top_shape, diffs=np.random.randn(*top_shape))
+  top_blob = Blob(top_shape, diffs=10.0*np.random.randn(*top_shape))
   
   if param_name is None:
     blob = bottom_blob
@@ -64,7 +64,8 @@ def gradient_check(layer, param_name=None, batch_size=None):
   numeric_derivative(layer, blob, bottom_blob, top_blob)
   numeric_diffs = blob.diffs.copy()
 
-  return np.linalg.norm(layer_diffs - numeric_diffs, ord='fro')
+  diff = layer_diffs - numeric_diffs
+  return np.linalg.norm(diff[:])
 
 def gradient_check_helper(layer_factory, param_name=None, num_tests=10,
                                threshold=0.01):

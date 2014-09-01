@@ -37,11 +37,13 @@ class FullyConnectedLayerTest(unittest.TestCase):
                                bias=bias_blob)
 
   def bottom_gradient_numeric_test(self):
-    gradient_check_helper(self.get_random_layer)
+    self.assertTrue(gradient_check_helper(self.get_random_layer))
 
   def weights_gradient_numeric_test(self):
-    gradient_check_helper(self.get_random_layer, param_name='weights')
+    passed = gradient_check_helper(self.get_random_layer, param_name='weights')
+    self.assertTrue(passed)
 
   def bias_gradient_numeric_test(self):
-    gradient_check_helper(self.get_random_layer, param_name='bias')
+    passed = gradient_check_helper(self.get_random_layer, param_name='bias')
+    self.assertTrue(passed)
 
