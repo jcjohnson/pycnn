@@ -1,0 +1,34 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+
+\newcommand{\RR}{\mathbb{R}}
+\newcommand{\pd}[2]{\frac{\partial#1}{\partial#2}}
+\DeclareMathOperator{\diag}{diag}
+
+\begin{document}
+
+\section{Softmax}
+Softmax is the function $\RR^n\to\RR^n$ given by
+\[f_i(x) = \frac{e^{x_i}}{\sum_{k=1}^ne^{x_k}}\]
+A bit of algebra shows that its derivatives are given by
+\[\pd{f_i}{x_j} = \begin{cases} 
+  -\cfrac{e^{x_i}e^{x_j}}{\left(\sum_{k=1}^ne^{x_k}\right)^2} & i \neq j \\
+  \left(\cfrac{e^{x_i}}{\sum_{k=1}^ne^{x_k}}\right)\left(1-\cfrac{e^{x_i}}{\sum_{k=1}^ne^{x_k}}\right)
+    & i = j
+\end{cases}\]
+Note that this is symmetric. If we let $y=f(x)$ then this can be rewritten in vectorized form as
+\[\pd{f}{x} = \diag(y) - yy^T\]
+Computing the product $(\pd{f}{x})z$ for a vector $z\in\RR^n$ is given by
+\[\left(\pd{f}{x}\right)z = y\circ z - yy^Tz = y\circ(z - (y^Tz)\mathbf{1}) \]
+where $\circ$ is an elementwise product and $\mathbf{1}\in\RR^n$ is a constant vector of ones.
+\\*[12pt]
+Now suppose that $X\in\RR^{n\times m}$ is a matrix of $m$ inputs stored in columns, and $Y\in\RR^{n\times m}$
+is the matrix of outputs obtained by applying $f$ to each column of $X$. Given a matrix
+$dY\in\RR^{n\times m}$ of upstream derivatives, in the backprop step we must compute the matrix
+$dX\in\RR^{n\times m}$ whose $i$th column is equal to $\pd{f}{x}$ evaluted at the $i$th column of $X$,
+multiplied by the $i$th column of $Y$. Using the above results, it is clear that
+\[dX = Y \circ (dY - \mathbf{1}\mathbf{1}^T(Y \circ dY))\]
+This can be efficiently implemented in numpy using broadcasting as:
+\[\verb|dX = Y * (dY - np.sum(Y * dY, axis=0))|\]
+
+\end{document}
