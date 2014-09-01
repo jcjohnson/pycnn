@@ -19,7 +19,7 @@ class ReLuLayerTest(unittest.TestCase):
     self.assertTrue(np.all(top_blob.vals == out_data))
 
   def get_random_layer(self):
-    dim = np.random.randint(2, 3)
+    dim = np.random.randint(2, 5)
     shape = tuple(np.random.randint(2, 3, size=dim))
     return ReLuLayer(shape)
 

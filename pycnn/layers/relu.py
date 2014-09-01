@@ -14,10 +14,8 @@ class ReLuLayer(BaseLayer):
 
   def forward(self, bottom_blobs, top_blobs):
     np.maximum(bottom_blobs[0].vals, 0, out=top_blobs[0].vals)
-    # top_blobs[0].vals = np.maximum(bottom_blobs[0].vals, 0)
 
   def backward(self, bottom_blobs, top_blobs):
-    # bottom_blobs[0].diffs = (bottom_blobs[0].vals > 0) * top_blobs[0].diffs
     np.multiply(bottom_blobs[0].vals > 0, top_blobs[0].diffs,
                 out=bottom_blobs[0].diffs)
 
