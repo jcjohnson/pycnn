@@ -24,3 +24,11 @@ class SoftmaxLayerTest(unittest.TestCase):
     layer.forward([bottom_blob], [top_blob])
     diff = top_blob.vals - y
     self.assertTrue(np.linalg.norm(diff[:]) < 10e-2)
+
+  def get_random_layer(self):
+    dim = np.random.randint(5, 10)
+    return SoftmaxLayer(dim)
+
+  def bottom_gradient_numeric_test(self):
+    passed = gradient_check_helper(self.get_random_layer)
+    self.assertTrue(passed)
