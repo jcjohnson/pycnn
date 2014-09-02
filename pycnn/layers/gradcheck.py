@@ -2,7 +2,7 @@ import random
 import numpy as np
 from pycnn import Blob
 
-def numeric_derivative(layer, blob, bottom_blob, top_blob):
+def numeric_derivative(layer, blob, bottom_blobs, top_blob):
   """
   Numerically compute the derivative of blob using the forward pass of the
   layer.
@@ -14,12 +14,12 @@ def numeric_derivative(layer, blob, bottom_blob, top_blob):
     idx = it.multi_index
 
     blob.vals[idx] += EPSILON
-    layer.forward([bottom_blob], [top_blob])
+    layer.forward(bottom_blobs, [top_blob])
     pos = top_blob.vals.copy()
     blob.vals = start_vals.copy()
 
     blob.vals[idx] -= EPSILON
-    layer.forward([bottom_blob], [top_blob])
+    layer.forward(bottom_blobs, [top_blob])
     neg = top_blob.vals.copy()
     blob.vals = start_vals.copy()
 
@@ -28,7 +28,7 @@ def numeric_derivative(layer, blob, bottom_blob, top_blob):
 
     it.iternext()
 
-def gradient_check(layer, param_name=None, batch_size=None):
+def gradient_check(layer, param_name=0, batch_size=None, rand_fn=None):
   """
   Compare numeric gradients with layer-computed gradients for either an input
   blob to the layer or an internal parameter of the layer. Returns the
@@ -37,46 +37,60 @@ def gradient_check(layer, param_name=None, batch_size=None):
   If param_name is None, the input to the layer is checked. Otherwise,
   param_name is used to fetch a Blob from the layer.
   """
-  if len(layer.get_bottom_shapes()) > 1 or len(layer.get_top_shapes()) > 1:
+  if len(layer.get_top_shapes()) > 1:
     raise ValueError('Gradient checking is only implemented for layers with '
-                     'one input and one output')
+                     'one output')
+
+  if rand_fn is None:
+    rand_fn = lambda s: 10.0 * np.random.standard_normal(s)
 
   if batch_size is None:
     batch_size = random.randint(2, 10)
 
-  bottom_shape = layer.get_bottom_shapes()[0] + (batch_size,)
-  bottom_blob = Blob(bottom_shape, vals=10.0*np.random.randn(*bottom_shape)) 
-  top_shape = layer.get_top_shapes()[0] + (batch_size,)
-  top_blob = Blob(top_shape, diffs=10.0*np.random.randn(*top_shape))
+  bottom_shapes = layer.get_bottom_shapes()
+  bottom_shapes = [s + (batch_size,) for s in bottom_shapes]
+  bottom_blobs = [Blob(s, vals=rand_fn(s)) for s in bottom_shapes]
   
-  if param_name is None:
-    blob = bottom_blob
+  for b in bottom_blobs:
+    print b.vals
+
+  top_shape = layer.get_top_shapes()[0]
+  if len(top_shape) > 0:
+    top_shape = top_shape + (batch_size,)
+  top_diffs = rand_fn(top_shape)
+  top_blob = Blob(top_shape, diffs=rand_fn(top_shape))
+
+  if type(param_name) == int:
+    blob = bottom_blobs[param_name]
   else:
     blob = getattr(layer, param_name)
 
   # This should only modify top_blob.vals
-  layer.forward([bottom_blob], [top_blob])
+  layer.forward(bottom_blobs, [top_blob])
 
   # This should only modify blob.diffs and bottom_blob.diffs
-  layer.backward([bottom_blob], [top_blob])
+  layer.backward(bottom_blobs, [top_blob])
   layer_diffs = blob.diffs.copy()
 
-  numeric_derivative(layer, blob, bottom_blob, top_blob)
+  numeric_derivative(layer, blob, bottom_blobs, top_blob)
   numeric_diffs = blob.diffs.copy()
 
   diff = layer_diffs - numeric_diffs
-  return np.linalg.norm(diff[:])
+  # diff = np.max(np.abs(diff))
+  diff = np.linalg.norm(diff[:])
+  return diff
 
-def gradient_check_helper(layer_factory, param_name=None, num_tests=10,
-                               threshold=0.01):
+def gradient_check_helper(layer_factory, num_tests=10, threshold=10e-3,
+                          **kwargs):
   """
   Run gradient checking num_tests times, and reports whether the difference
   was less than threshold for all tests.
   layer_factory: function that returns layers
   """
+  print threshold
   for _ in xrange(num_tests):
     layer = layer_factory()
-    diff = gradient_check(layer, param_name=param_name)
+    diff = gradient_check(layer, **kwargs)
     if diff > threshold:
       return False
   return True

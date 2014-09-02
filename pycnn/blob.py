@@ -26,7 +26,8 @@ class Blob(object):
   @vals.setter
   def vals(self, new_vals):
     if new_vals.shape != self.shape:
-      raise ValueError('Cannot set vals; shape mismatch')
+      raise ValueError('Cannot set vals; shape mismatch (%s vs %s)'
+                        % (str(new_vals.shape), str(self.shape)))
     self._vals = new_vals
 
   @property
@@ -36,6 +37,7 @@ class Blob(object):
   @diffs.setter
   def diffs(self, new_diffs):
     if new_diffs.shape != self.shape:
-      raise ValueError('Cannot set diffs; shape mismatch')
+      raise ValueError('Cannot set diffs; shape mismatch (%s vs %s)'
+                       % (str(new_diffs.shape), str(self.shape)))
     self._diffs = new_diffs
 

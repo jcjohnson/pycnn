@@ -23,6 +23,12 @@ class ReLuLayerTest(unittest.TestCase):
     shape = tuple(np.random.randint(2, 3, size=dim))
     return ReLuLayer(shape)
 
+  def rand_fn(self, s):
+    # We need to make sure that all elements are away from zero since relu
+    # is not differentiable there
+    nums = np.random.standard_normal(s)
+    nums += 0.1 * np.sign(nums)
+
   def bottom_gradient_numeric_test(self):
-    passed = gradient_check_helper(self.get_random_layer)
+    passed = gradient_check_helper(self.get_random_layer, rand_fn=self.rand_fn)
     self.assertTrue(passed)

@@ -5,10 +5,40 @@
 \newcommand{\pd}[2]{\frac{\partial#1}{\partial#2}}
 \DeclareMathOperator{\diag}{diag}
 
+\title{Notes about Neural Networks}
+\author{Justin Johnson}
+
 \begin{document}
+\maketitle
+
+\section{Backpropogation}
+A neural network is a function $f:\RR^{n_0}\to\RR^{n_k}$ which can be written as a series of function
+compositions:
+\[f = f_k \circ f_{k-1} \circ \cdots \circ f_1\]
+where each function $f_i:\RR^{n_{i-1}}\to\RR^{n_i}$ is a \textbf{layer}.
+Each layer $f_i$ may also be a function of some \textbf{parameters} $w_i\in\RR^{d_i}$. If we treat these
+parameters as explicit inputs to the functions $f_i$, then each $f_i$ is viewed as a function
+$\RR^{d_i}\times\RR^{n_{i-1}}\to\RR^{n_i}$. If we group the parameters for all layers into a single variable
+$w$, then the entire network computes its output as:
+\[f(w, x) = f_k(w_k, f_{k-1}(w_{k-1}, \cdots f_2(w_2, f_1(w_1, x)) \cdots ))\]
+This computation is known as the \textbf{forward} pass of the network. It is traditional to denote the output
+of the $i$th layer as $a_i\in\RR^{n_i}$; this is the $i$th \textbf{activation} of the network.
+Given an input $x$ to the network, we can then compute the output $y$ as:
+\[a_0 = x \hspace{4pc} a_{i+1} = f_i(w_i, a_{i-1}) \hspace{4pc} y = a_k\]
+In order to \textbf{train} a network, we need a \textbf{loss function} $\ell:\RR^{n_k}\times\RR^{n_k}\to\RR$,
+a set of \textbf{training data} $(x_1, y_1),\ldots,(x_m,y_m)$, and a \textbf{regularizer}
+$R:\RR^{d_1}\times\cdots\times\RR^{d_k}$. Training a network then amounts to
+solving the optimization problem
+\begin{align*}
+  J(w) &= \sum_{j=1}^m\ell(y_j, f(w, x_j)) + R(w) \\
+  w^* &= \arg\min_w J(w)
+\end{align*}
+This is typically a nonconvex optimization problem, and is traditionally solved using stochastic subgradient
+descent. In order to do this, we need to be able to compute the subgradients $\pd{J}{w_i}$ of the objetive
+with respect to the parameters of each layer.
 
 \section{Softmax}
-Softmax is the function $\RR^n\to\RR^n$ given by
+Softmax is the function $f:\RR^n\to\RR^n$ given by
 \[f_i(x) = \frac{e^{x_i}}{\sum_{k=1}^ne^{x_k}}\]
 A bit of algebra shows that its derivatives are given by
 \[\pd{f_i}{x_j} = \begin{cases} 
@@ -30,5 +60,15 @@ multiplied by the $i$th column of $Y$. Using the above results, it is clear that
 \[dX = Y \circ (dY - \mathbf{1}\mathbf{1}^T(Y \circ dY))\]
 This can be efficiently implemented in numpy using broadcasting as:
 \[\verb|dX = Y * (dY - np.sum(Y * dY, axis=0))|\]
+
+\section{Cross-Entropy Loss}
+The cross-entropy between two probability distributions $p$ and $q$ over discrete classes
+$\{1, 2, \ldots, k\}$ is given by
+\[H(q, p) = -\sum_{i=1}^kq_i\log(p_i)\]
+Note that if $p$ is given by a softmax function and $q_i=1$ iff $y_i=i$ then picking the softmax
+weights via maximum likelihood estimation is equivalent to minimizing the sum of the cross-entropy between
+the predicted class probabilities $p$ and the true class probabilities $q$ over the training set.
+The derivatives are given by
+\[\pd{H}{q_i} = -\log(p_i) \hspace{4pc} \pd{H}{p_i} = -\frac{q_i}{p_i}\]
 
 \end{document}
