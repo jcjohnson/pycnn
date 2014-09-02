@@ -7,6 +7,16 @@ from pycnn.layers import FullyConnectedLayer
 from pycnn.layers.gradcheck import gradient_check_helper
 
 class FullyConnectedLayerTest(unittest.TestCase):
+  def param_names_none_test(self):
+    layer = FullyConnectedLayer(1, 1)
+    self.assertIsNone(layer.weights.name)
+    self.assertIsNone(layer.bias.name)
+
+  def param_names_test(self):
+    layer = FullyConnectedLayer(1, 1, name='MyLayer')
+    self.assertEquals(layer.weights.name, 'MyLayer.weights')
+    self.assertEquals(layer.bias.name, 'MyLayer.bias')
+
   def simple_forward_test(self):
     in_dim = 2
     out_dim = 3

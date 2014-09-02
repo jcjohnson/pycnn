@@ -3,11 +3,13 @@ from pycnn import Blob
 from pycnn.layers import BaseLayer
 
 class FullyConnectedLayer(BaseLayer):
-  def __init__(self, input_dim, output_dim, weights=None, bias=None):
+  def __init__(self, input_dim, output_dim, weights=None, bias=None, **kwargs):
+    super(FullyConnectedLayer, self).__init__(**kwargs)
     self.input_dim = input_dim
     self.output_dim = output_dim
     
     weight_shape = (output_dim, input_dim)
+    weight_name = None
     if weights is not None:
       if not hasattr(weights, 'vals') or not hasattr(weights, 'diffs'):
         raise ValueError('weights must be a Blob')
@@ -15,7 +17,8 @@ class FullyConnectedLayer(BaseLayer):
         raise ValueError('weights do not have the correct shape')
       self.weights = weights
     else:
-      self.weights = Blob(weight_shape)
+      weight_name = '%s.weights' % self.name if self.name is not None else None
+      self.weights = Blob(weight_shape, name=weight_name)
 
     bias_shape = (output_dim, 1)
     if bias is not None:
@@ -25,7 +28,8 @@ class FullyConnectedLayer(BaseLayer):
         raise ValueError('bias does not have the correct shape')
       self.bias = bias
     else:
-      self.bias = Blob(bias_shape)
+      bias_name = '%s.bias' % self.name if self.name is not None else None
+      self.bias = Blob(bias_shape, name=bias_name)
     
   def get_bottom_shapes(self):
     return [(self.input_dim,)]

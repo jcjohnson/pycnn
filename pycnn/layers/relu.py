@@ -3,7 +3,8 @@ from pycnn import Blob
 from pycnn.layers import BaseLayer
 
 class ReLuLayer(BaseLayer):
-  def __init__(self, shape):
+  def __init__(self, shape, **kwargs):
+    super(ReLuLayer, self).__init__(**kwargs)
     self.shape = shape
 
   def get_bottom_shapes(self):

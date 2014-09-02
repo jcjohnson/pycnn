@@ -3,7 +3,8 @@ from pycnn import Blob
 from pycnn.layers import BaseLayer
 
 class SoftmaxLayer(BaseLayer):
-  def __init__(self, dim):
+  def __init__(self, dim, **kwargs):
+    super(SoftmaxLayer, self).__init__(**kwargs)
     self.dim = dim
 
   def get_bottom_shapes(self):

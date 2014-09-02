@@ -4,7 +4,8 @@ from pycnn import Blob
 from pycnn.layers import BaseLayer
 
 class CrossEntropyLossLayer(BaseLayer):
-  def __init__(self, dim):
+  def __init__(self, dim, **kwargs):
+    super(CrossEntropyLossLayer, self).__init__(**kwargs)
     self.dim = dim
 
   def get_bottom_shapes(self):

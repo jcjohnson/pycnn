@@ -24,8 +24,9 @@ class CrossEntropyLossLayerTest(unittest.TestCase):
 
   def rand_fn(self, s):
     # Since cross-entropy loss is really over discrete probability distrubtions
-    # the elements must be in the range [0, 1]. Numeric derivatives will also be
-    # unstable as p gets close to zero.
+    # the elements should be in the range [0, 1]. Numeric derivatives will be
+    # unstable as p gets close to zero, so make sure random values are a bit
+    # positive.
     low = 0.1
     high = 1.0
     return low + (high - low) * np.random.random(s)

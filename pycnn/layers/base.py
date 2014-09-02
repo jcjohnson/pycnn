@@ -1,8 +1,8 @@
 
 class BaseLayer(object):
 
-  def __init__(self):
-    self.name = None
+  def __init__(self, name=None):
+    self.name = name
 
   def get_bottom_shapes(self):
     """
