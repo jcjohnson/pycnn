@@ -63,4 +63,5 @@ class Net(object):
     return {name: self.blobs[name].vals for name in self.output_names}
 
   def backward(self):
+    # TODO: Implement this
     pass
