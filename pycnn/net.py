@@ -17,6 +17,7 @@ class Net(object):
     self.batch_size = batch_size
     self.input_names = set()
     self.output_names = set()
+    self.loss_names = set()
     self._init_blobs()
     self._check_layers_sorted()
 
@@ -34,6 +35,7 @@ class Net(object):
 
     self.input_names = seen_inputs - seen_outputs
     self.output_names = seen_outputs - seen_inputs
+    self.loss_names = {n for n in self.output_names if self.blobs[n].shape == ()}
 
   def _init_blobs(self):
     def helper(shape, name):
@@ -57,11 +59,18 @@ class Net(object):
     for name, vals in input_vals.iteritems():
       self.blobs[name].vals = vals
     for layer in self.layers:
+      # TODO: Would it be more efficient to prepare the input / output blobs
+      # for each layer once when the network initializes?
       input_blobs = [self.blobs[name] for name in layer.input_names]
       output_blobs = [self.blobs[name] for name in layer.output_names]
       layer.forward(input_blobs, output_blobs)
     return {name: self.blobs[name].vals for name in self.output_names}
 
   def backward(self):
-    # TODO: Implement this
-    pass
+    for name in self.loss_names:
+      blob = self.blobs[name]
+      blob.diffs = np.array(1.0).astype(blob.diffs.dtype)
+    for layer in reversed(self.layers):
+      input_blobs = [self.blobs[name] for name in layer.input_names]
+      output_blobs = [self.blobs[name] for name in layer.output_names]
+      layer.backward(input_blobs, output_blobs)
