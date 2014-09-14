@@ -73,7 +73,6 @@ class Tensor4D {
     cudnnSafeCall(cudnnSetFilterDescriptor(_filterDesc, CUDNN_DATA_FLOAT,
                     _num, _channels, _height, _width));
 
-
     // Create GPU memory.
     // TODO: Make it possible to choose which CUDA device to use.
     cudaSafeCall(cudaMalloc(&_gpu_data, _size * sizeof(float)));
