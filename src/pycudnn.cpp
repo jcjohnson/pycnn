@@ -6,7 +6,7 @@
 using namespace std;
 using namespace boost::python;
 
-
+// Get a human-readable string from a cudnnStatus_t
 inline string cudnnGetErrorString(cudnnStatus_t status) {
   switch (status) {
     case CUDNN_STATUS_SUCCESS: return "SUCCESS";
@@ -24,7 +24,8 @@ inline string cudnnGetErrorString(cudnnStatus_t status) {
 }
 
 
-// A nice little macro to wrap functions that return cudnn status codes.
+// A macro to wrap calls to cudnn functions, aborting with an error message
+// if it doesn't return cleanly.
 #define cudnnSafeCall(status) { cudnnAssert((status), __FILE__, __LINE__); }
 inline void cudnnAssert(cudnnStatus_t status, string file, int line,
                         bool abort=true) {
@@ -35,7 +36,8 @@ inline void cudnnAssert(cudnnStatus_t status, string file, int line,
   }
 }
 
-
+// A macro to wrap calls to cuda functions, aborting with an error message
+// if it doesn't return cleanly.
 #define cudaSafeCall(code) { cudaAssert((code), __FILE__, __LINE__); }
 inline void cudaAssert(cudaError_t code, string file, int line,
                        bool abort=true) {
@@ -46,10 +48,13 @@ inline void cudaAssert(cudaError_t code, string file, int line,
   }
 }
 
-
+// A 4D blob of data. We maintain CPU and GPU versions of the data, and provide
+// a numpy array wrapping the CPU data to be accessed from Python.
+// The methods toGpu() and fromGpu() sync the GPU memory with the CPU memory.
+// Right now these need to be called manually.
 class Tensor4D {
  public:
-  Tensor4D(int num, int height, int width, int channels) :
+  Tensor4D(int num, int channels, int height, int width) :
       _num(num), _height(height), _width(width), _channels(channels) {
     _size = num * height * width * channels;
     // Set up a tensor descriptor. The NHWC layout seems not to be supported at
@@ -57,17 +62,28 @@ class Tensor4D {
     // store floats.
     cudnnSafeCall(cudnnCreateTensor4dDescriptor(&_tensorDesc));
     cudnnSafeCall(cudnnSetTensor4dDescriptor(_tensorDesc, CUDNN_TENSOR_NCHW,
-                  CUDNN_DATA_FLOAT, _num, _channels, _height, _width));
+                    CUDNN_DATA_FLOAT, _num, _channels, _height, _width));
+
+    // Also set up a filter descriptor so that any Tensor4D object can be used
+    // as a set of convolutional filters. This adds a bit of overhead to all
+    // Tensor4D objects, most of which will never be used as a filter bank.
+    // I don't think that this will be a problem, but if it is then we can
+    // lazily set up the filter descriptor instead.
+    cudnnSafeCall(cudnnCreateFilterDescriptor(&_filterDesc));
+    cudnnSafeCall(cudnnSetFilterDescriptor(_filterDesc, CUDNN_DATA_FLOAT,
+                    _num, _channels, _height, _width));
+
 
     // Create GPU memory.
     // TODO: Make it possible to choose which CUDA device to use.
     cudaSafeCall(cudaMalloc(&_gpu_data, _size * sizeof(float)));
 
     // Set up the Numpy array. The memory that is allocated by the numpy array
-    // will be used as the CPU memory for this Tensor4D, so we store a pointer
-    // to this memory. Allowing the numpy array to manage the CPU memory means
+    // will be used as the CPU memory for this Tensor4D, so grab a pointer to
+    // it. Allowing the numpy array to manage the CPU memory means
     // that references to the numpy array are still valid even after the Tensor
-    // object is destroyed.
+    // object is destroyed. This makes it much easier to avoid segfaults in
+    // Python.
     npy_intp np_shape[4] = {_num, _channels, _height, _width};
     PyObject *obj = PyArray_SimpleNew(4, np_shape, NPY_FLOAT);
     _cpu_data = (float *)PyArray_DATA((PyArrayObject *)obj);
@@ -76,6 +92,8 @@ class Tensor4D {
 
   ~Tensor4D() {
     cudaSafeCall(cudaFree(_gpu_data));
+    cudnnSafeCall(cudnnDestroyTensor4dDescriptor(_tensorDesc));
+    cudnnSafeCall(cudnnDestroyFilterDescriptor(_filterDesc));
   }
 
   // Copy data from main memory to the GPU
@@ -92,19 +110,24 @@ class Tensor4D {
                             cudaMemcpyDeviceToHost));
   }
   
+  // Accessors for the dimensions and size.
   int num() const { return _num; }
   int height() const { return _height; }
   int width() const { return _width; }
   int channels() const { return _channels; }
   int size() const { return _size; }
 
+  // Accessors for the data pointers.
   const float * const_cpu_data() const { return _cpu_data; }
   const float * const_gpu_data() const { return _gpu_data; }
-
   float * cpu_data() { return _cpu_data; }
   float * gpu_data() { return _gpu_data; }
+
+  // Accessors for the cuddn descriptors.
   const cudnnTensor4dDescriptor_t tensorDesc() const { return _tensorDesc; }
-  
+  const cudnnFilterDescriptor_t filterDesc() const { return _filterDesc; }
+
+  // Get a view of the CPU data as a numpy array.
   object numpy_array() { return _np_array; }
 
  private:
@@ -114,6 +137,7 @@ class Tensor4D {
   int _channels;
   int _size;
   cudnnTensor4dDescriptor_t _tensorDesc;
+  cudnnFilterDescriptor_t _filterDesc;
   float *_gpu_data;
   float *_cpu_data;
   object _np_array;
@@ -128,9 +152,12 @@ class Softmax {
     _mode = CUDNN_SOFTMAX_MODE_INSTANCE;
     _algorithm = CUDNN_SOFTMAX_ACCURATE;
 
-    // TODO: Do something better for this
+    // TODO: Do something more clever to create / destroy cudnn contexts to
+    // allow parallelization over different streams or GPUs
     cudnnSafeCall(cudnnCreate(&_cudnn_handle));
   }
+
+  ~Softmax() { cudnnDestroy(_cudnn_handle); }
 
   void forward(const Tensor4D &bottom_vals, Tensor4D *top_vals) {
     cudnnSafeCall(cudnnSoftmaxForward(_cudnn_handle, _algorithm, _mode,
@@ -152,6 +179,50 @@ class Softmax {
   cudnnHandle_t _cudnn_handle;
 };
 
+class Convolution {
+ public:
+  Convolution(int pad_x, int pad_y, int stride_x, int stride_y) :
+      _pad_x(pad_x), _pad_y(pad_y), _stride_x(stride_x), _stride_y(stride_y) {
+    cudnnSafeCall(cudnnCreateConvolutionDescriptor(&_convDesc));
+    cudnnSafeCall(cudnnCreate(&_cudnn_handle));
+
+    // TODO: Make it possible to do cross-correlation as well
+    _mode = CUDNN_CONVOLUTION;
+
+    // TODO: Figure out what these are and make it possible to set them
+    _upscale_x = 1;
+    _upscale_y = 1;
+  }
+
+  ~Convolution() {
+    cudnnSafeCall(cudnnDestroyConvolutionDescriptor(_convDesc));
+  }
+
+  void forward(const Tensor4D &bottom_vals, const Tensor4D &filter_vals,
+               Tensor4D *top_vals, bool accumulate) {
+    // Set up the convolution descriptor
+    cudnnSafeCall(cudnnSetConvolutionDescriptor(_convDesc,
+          bottom_vals.tensorDesc(), filter_vals.filterDesc(),
+          _pad_y, _pad_x, _stride_y, _stride_x, _upscale_x, _upscale_y,
+          _mode));
+
+    // Actually perform the convolution
+    cudnnSafeCall(cudnnConvolutionForward(_cudnn_handle,
+          bottom_vals.tensorDesc(), bottom_vals.const_gpu_data(),
+          filter_vals.filterDesc(), filter_vals.const_gpu_data(),
+          _convDesc,
+          top_vals->tensorDesc(), top_vals->gpu_data(),
+          accumulate ? CUDNN_RESULT_ACCUMULATE : CUDNN_RESULT_NO_ACCUMULATE));
+  }
+
+  // TODO: Implement backward.
+ private:
+  int _pad_x, _pad_y, _stride_x, _stride_y, _upscale_x, _upscale_y;
+  cudnnConvolutionDescriptor_t _convDesc;
+  cudnnHandle_t _cudnn_handle;
+  cudnnConvolutionMode_t _mode;
+};
+
 
 BOOST_PYTHON_MODULE(pycudnn) {
   import_array();
@@ -170,5 +241,8 @@ BOOST_PYTHON_MODULE(pycudnn) {
   class_<Softmax>("Softmax")
     .def("forward", &Softmax::forward)
     .def("backward", &Softmax::backward);
+
+  class_<Convolution>("Convolution", init<int, int, int, int>())
+    .def("forward", &Convolution::forward);
 }
 
