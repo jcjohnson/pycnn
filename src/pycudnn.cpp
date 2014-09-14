@@ -143,21 +143,26 @@ class Tensor4D {
   object _np_array;
 };
 
+// Base class for classes that wrap cudnn layer functions.
+// Handles creating and destroying the cudnn context handle.
+// TODO: Make it possible to configure the GPU / stream
+class LayerFn {
+ public:
+  LayerFn() { cudnnSafeCall(cudnnCreate(&_cudnn_handle)); }
+  ~LayerFn() { cudnnSafeCall(cudnnDestroy(_cudnn_handle)); } 
+ protected:
+  cudnnHandle_t _cudnn_handle;
+};
 
-class Softmax {
+
+class Softmax : public LayerFn {
  public:
   Softmax() {
     // TODO: Allow these to be set to CUDNN_SOFTMAX_MODE_CHANNEL
     // or CUDNN_SOFTMAX_FAST respectively.
     _mode = CUDNN_SOFTMAX_MODE_INSTANCE;
     _algorithm = CUDNN_SOFTMAX_ACCURATE;
-
-    // TODO: Do something more clever to create / destroy cudnn contexts to
-    // allow parallelization over different streams or GPUs
-    cudnnSafeCall(cudnnCreate(&_cudnn_handle));
   }
-
-  ~Softmax() { cudnnDestroy(_cudnn_handle); }
 
   void forward(const Tensor4D &bottom_vals, Tensor4D *top_vals) {
     cudnnSafeCall(cudnnSoftmaxForward(_cudnn_handle, _algorithm, _mode,
@@ -176,15 +181,14 @@ class Softmax {
  private:
   cudnnSoftmaxAlgorithm_t _algorithm;
   cudnnSoftmaxMode_t _mode;
-  cudnnHandle_t _cudnn_handle;
 };
 
-class Convolution {
+
+class Convolution : public LayerFn {
  public:
   Convolution(int pad_x, int pad_y, int stride_x, int stride_y) :
       _pad_x(pad_x), _pad_y(pad_y), _stride_x(stride_x), _stride_y(stride_y) {
     cudnnSafeCall(cudnnCreateConvolutionDescriptor(&_convDesc));
-    cudnnSafeCall(cudnnCreate(&_cudnn_handle));
 
     // TODO: Make it possible to do cross-correlation as well
     _mode = CUDNN_CONVOLUTION;
@@ -192,10 +196,6 @@ class Convolution {
     // TODO: Figure out what these are and make it possible to set them
     _upscale_x = 1;
     _upscale_y = 1;
-  }
-
-  ~Convolution() {
-    cudnnSafeCall(cudnnDestroyConvolutionDescriptor(_convDesc));
   }
 
   void forward(const Tensor4D &bottom_vals, const Tensor4D &filter_vals,
@@ -215,12 +215,74 @@ class Convolution {
           accumulate ? CUDNN_RESULT_ACCUMULATE : CUDNN_RESULT_NO_ACCUMULATE));
   }
 
-  // TODO: Implement backward.
+  void backward(const Tensor4D &top_vals, const Tensor4D &top_diffs,
+                const Tensor4D &filter_vals, Tensor4D *filter_diffs,
+                Tensor4D *bottom_diffs, bool accumulate) {
+    // Set up convolution descriptor
+    cudnnSafeCall(cudnnSetConvolutionDescriptor(_convDesc,
+          bottom_diffs->tensorDesc(), filter_vals.filterDesc(),
+          _pad_y, _pad_x, _stride_y, _stride_x, _upscale_x, _upscale_y,
+          _mode));
+
+    // Compute gradient with respect to bottom
+    cudnnSafeCall(cudnnConvolutionBackwardData(_cudnn_handle,
+          filter_vals.filterDesc(), filter_vals.const_gpu_data(),
+          top_diffs.tensorDesc(), top_diffs.const_gpu_data(),
+          _convDesc,
+          bottom_diffs->tensorDesc(), bottom_diffs->gpu_data(),
+          accumulate ? CUDNN_RESULT_ACCUMULATE : CUDNN_RESULT_NO_ACCUMULATE));
+
+    // Compute gradient with respect to filter
+    cudnnSafeCall(cudnnConvolutionBackwardFilter(_cudnn_handle,
+          top_vals.tensorDesc(), top_vals.const_gpu_data(),
+          top_diffs.tensorDesc(), top_diffs.const_gpu_data(),
+          _convDesc,
+          filter_diffs->filterDesc(), filter_diffs->gpu_data(),
+          accumulate ? CUDNN_RESULT_ACCUMULATE : CUDNN_RESULT_NO_ACCUMULATE));
+  }
+
  private:
   int _pad_x, _pad_y, _stride_x, _stride_y, _upscale_x, _upscale_y;
   cudnnConvolutionDescriptor_t _convDesc;
-  cudnnHandle_t _cudnn_handle;
   cudnnConvolutionMode_t _mode;
+};
+
+
+class Activation : public LayerFn {
+ public:
+  explicit Activation(cudnnActivationMode_t mode) : _mode(mode) { }
+
+  void forward(const Tensor4D &bottom_vals, Tensor4D *top_vals) {
+    cudnnSafeCall(cudnnActivationForward(_cudnn_handle, _mode,
+          bottom_vals.tensorDesc(), bottom_vals.const_gpu_data(),
+          top_vals->tensorDesc(), top_vals->gpu_data()));
+  }
+
+  void backward(const Tensor4D &top_vals, const Tensor4D &top_diffs,
+                const Tensor4D &bottom_vals, Tensor4D *bottom_diffs) {
+    cudnnSafeCall(cudnnActivationBackward(_cudnn_handle, _mode,
+          top_vals.tensorDesc(), top_vals.const_gpu_data(),
+          top_diffs.tensorDesc(), top_diffs.const_gpu_data(),
+          bottom_vals.tensorDesc(), bottom_vals.const_gpu_data(),
+          bottom_diffs->tensorDesc(), bottom_diffs->gpu_data()));
+  }
+ private:
+  cudnnActivationMode_t _mode;
+};
+
+
+class ReLu : public Activation {
+ public: ReLu() : Activation(CUDNN_ACTIVATION_RELU) { }
+};
+
+
+class Sigmoid : public Activation {
+ public: Sigmoid() : Activation(CUDNN_ACTIVATION_SIGMOID) { }
+};
+
+
+class Tanh : public Activation {
+ public: Tanh() : Activation(CUDNN_ACTIVATION_TANH) { }
 };
 
 
@@ -243,6 +305,19 @@ BOOST_PYTHON_MODULE(pycudnn) {
     .def("backward", &Softmax::backward);
 
   class_<Convolution>("Convolution", init<int, int, int, int>())
-    .def("forward", &Convolution::forward);
+    .def("forward", &Convolution::forward)
+    .def("backward", &Convolution::backward);
+
+  class_<ReLu>("ReLu")
+    .def("forward", &ReLu::forward)
+    .def("backward", &ReLu::backward);
+  
+  class_<Sigmoid>("Sigmoid")
+    .def("forward", &Sigmoid::forward)
+    .def("backward", &Sigmoid::backward);
+
+  class_<Tanh>("Tanh")
+    .def("forward", &Tanh::forward)
+    .def("backward", &Tanh::backward);
 }
 
