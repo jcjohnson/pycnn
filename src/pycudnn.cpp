@@ -285,6 +285,51 @@ class Tanh : public Activation {
 };
 
 
+class Pooling : public LayerFn {
+ public:
+  Pooling(cudnnPoolingMode_t mode, int width, int height,
+          int stride_x, int stride_y) : _mode(mode) {
+      cudnnSafeCall(cudnnCreatePoolingDescriptor(&_poolingDesc));
+      cudnnSafeCall(cudnnSetPoolingDescriptor(_poolingDesc,
+            _mode, height, width, stride_y, stride_x));
+    }
+
+  ~Pooling() { cudnnSafeCall(cudnnDestroyPoolingDescriptor(_poolingDesc)); }
+
+  void forward(const Tensor4D &bottom_vals, Tensor4D *top_vals) {
+    cudnnSafeCall(cudnnPoolingForward(_cudnn_handle, _poolingDesc,
+          bottom_vals.tensorDesc(), bottom_vals.const_gpu_data(),
+          top_vals->tensorDesc(), top_vals->gpu_data()));
+  }
+
+  void backward(const Tensor4D &top_vals, const Tensor4D &top_diffs,
+                const Tensor4D &bottom_vals, Tensor4D *bottom_diffs) {
+    cudnnSafeCall(cudnnPoolingBackward(_cudnn_handle, _poolingDesc,
+          top_vals.tensorDesc(), top_vals.const_gpu_data(),
+          top_diffs.tensorDesc(), top_diffs.const_gpu_data(),
+          bottom_vals.tensorDesc(), bottom_vals.const_gpu_data(),
+          bottom_diffs->tensorDesc(), bottom_diffs->gpu_data()));
+  }
+ private:
+  cudnnPoolingMode_t _mode;
+  cudnnPoolingDescriptor_t _poolingDesc;
+};
+
+
+class MaxPooling : public Pooling {
+ public:
+  MaxPooling(int width, int height, int stride_x, int stride_y) :
+      Pooling(CUDNN_POOLING_MAX, width, height, stride_x, stride_y) { }
+};
+
+
+class AvgPooling : public Pooling {
+ public:
+  AvgPooling(int width, int height, int stride_x, int stride_y) :
+      Pooling(CUDNN_POOLING_AVERAGE, width, height, stride_x, stride_y) { }
+};
+
+
 BOOST_PYTHON_MODULE(pycudnn) {
   import_array();
   numeric::array::set_module_and_type("numpy", "ndarray");
@@ -318,5 +363,13 @@ BOOST_PYTHON_MODULE(pycudnn) {
   class_<Tanh>("Tanh")
     .def("forward", &Tanh::forward)
     .def("backward", &Tanh::backward);
+
+  class_<MaxPooling>("MaxPooling", init<int, int, int, int>())
+    .def("forward", &MaxPooling::forward)
+    .def("backward", &MaxPooling::backward);
+
+  class_<AvgPooling>("AvgPooling", init<int, int, int, int>())
+    .def("forward", &AvgPooling::forward)
+    .def("backward", &AvgPooling::backward);
 }
 
