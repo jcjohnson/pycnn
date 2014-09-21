@@ -1,30 +1,18 @@
-import numpy as np
-from pycnn import Blob
 from pycnn.layers import BaseLayer
+from pycnn import pycudnn
 
 class SoftmaxLayer(BaseLayer):
-  def __init__(self, dim, **kwargs):
-    super(SoftmaxLayer, self).__init__(**kwargs)
-    self.dim = dim
-
-  def get_bottom_shapes(self):
-    return [(self.dim,)]
-
-  def get_top_shapes(self):
-    return [(self.dim,)]
+  def __init__(self, name):
+    self.name = name
+    self.num_bottom_blobs = 1
+    self.num_top_blobs = 1
+    self.softmax = pycudnn.Softmax()
 
   def forward(self, bottom_blobs, top_blobs):
-    x = bottom_blobs[0].vals
-    y = top_blobs[0].vals
-    np.subtract(x, np.amax(x, 0), out=y)
-    np.exp(y, out=y)
-    np.divide(y, np.sum(y, axis=0), out=y)
+    self.check_blobs(bottom_blobs, top_blobs)
+    self.softmax.forward(bottom_blobs[0].vals, top_blobs[0].vals)
 
   def backward(self, bottom_blobs, top_blobs):
-    y = top_blobs[0].vals
-    dy = top_blobs[0].diffs
-    dx = bottom_blobs[0].diffs
-
-    np.multiply(y, dy, out=dx)
-    np.subtract(dy, np.sum(dx, axis=0), out=dx)
-    np.multiply(y, dx, out=dx)
+    self.check_blobs(bottom_blobs, top_blobs)
+    top = top_blobs[0]
+    self.softmax.backward(top.vals, top.diffs, bottom_blobs[0].diffs)

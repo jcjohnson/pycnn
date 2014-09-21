@@ -48,6 +48,41 @@ inline void cudaAssert(cudaError_t code, string file, int line,
   }
 }
 
+/*
+// We could export templated versions of Tensor4D like this
+template<typename dtype> struct DtypeTraits { }; 
+
+template<> struct DtypeTraits<float> {
+  static const cudnnDataType_t CUDNN_DATA_TYPE = CUDNN_DATA_FLOAT;
+  static const int NPY_DATA_TYPE = NPY_FLOAT32;
+};
+
+template<> struct DtypeTraits<double> {
+  static const cudnnDataType_t CUDNN_DATA_TYPE = CUDNN_DATA_DOUBLE;
+  static const int NPY_DATA_TYPE = NPY_FLOAT64;
+};
+
+template<typename dtype>
+class Tensor4D_template {
+ public:
+  Tensor4D_template() {
+    cudnnSafeCall(cudnnCreateTensor4dDescriptor(&_tensorDesc));
+    cudnnSafeCall(cudnnSetTensor4dDescriptor(_tensorDesc, CUDNN_TENSOR_NCHW,
+                    DtypeTraits<dtype>::CUDNN_DATA_TYPE, 1, 1, 1, 1));
+  }
+ private:
+  cudnnTensor4dDescriptor_t _tensorDesc;
+};
+
+class Foo {
+ public:
+  template<typename dtype>
+  int bar(Tensor4D_template<dtype> t1, Tensor4D_template<dtype> t2) {
+    return DtypeTraits<dtype>::NPY_DATA_TYPE;
+  }
+};
+*/
+
 // A 4D blob of data. We maintain CPU and GPU versions of the data, and provide
 // a numpy array wrapping the CPU data to be accessed from Python.
 // The methods toGpu() and fromGpu() sync the GPU memory with the CPU memory.
@@ -329,10 +364,26 @@ class AvgPooling : public Pooling {
       Pooling(CUDNN_POOLING_AVERAGE, width, height, stride_x, stride_y) { }
 };
 
+template<typename T>
+void export_forward_backward(class_<T> c) {
+  c.def("forward", &T::forward);
+  c.def("backward", &T::backward);
+}
 
 BOOST_PYTHON_MODULE(pycudnn) {
   import_array();
   numeric::array::set_module_and_type("numpy", "ndarray");
+
+  /*
+  // We could export a templated version of Tensor4D like this
+  class_<Tensor4D_template<float> >("Tensor4D_Float");
+  class_<Tensor4D_template<double> >("Tensor4D_Double");
+
+  // This is how we might export templated versions of the layer functions
+  class_<Foo>("Foo")
+    .def("bar", &Foo::bar<float>)
+    .def("bar", &Foo::bar<double>);
+  */
 
   class_<Tensor4D>("Tensor4D", init<int, int, int, int>())
     .add_property("num", &Tensor4D::num)
@@ -340,7 +391,7 @@ BOOST_PYTHON_MODULE(pycudnn) {
     .add_property("width", &Tensor4D::width)
     .add_property("channels", &Tensor4D::channels)
     .add_property("size", &Tensor4D::size)
-    .add_property("data", &Tensor4D::numpy_array)
+    .add_property("_data", &Tensor4D::numpy_array)
     .def("fromGpu", &Tensor4D::fromGpu)
     .def("toGpu", &Tensor4D::toGpu);
 

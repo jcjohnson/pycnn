@@ -18,11 +18,11 @@ INCS = $(PYTHON_INC) $(BOOST_INC) $(NUMPY_INC) $(CUDA_INC)
 LIBS = $(BOOST_LIBS) $(PYTHON_LIBS) $(CUDA_LIBS)
 LDFLAGS = $(BOOST_LDFLAGS) $(PYTHON_LDFLAGS) $(CUDA_LDFLAGS)
 
-pycudnn.so: build/pycudnn.o
+pycnn/pycudnn.so: build/pycudnn.o
 	g++ -shared -Wl,--export-dynamic $^ $(LDFLAGS) $(LIBS) -o $@
  
 build/pycudnn.o: src/pycudnn.cpp
 	g++ $(INCS) -fPIC -c $^ -o $@
 
 clean:
-	rm -f *.so build/*
+	rm -f *.so build/* pycnn/*.so

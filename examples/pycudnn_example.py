@@ -1,5 +1,5 @@
 import numpy as np
-from pycudnn import *
+from pycnn.pycudnn import *
 
 in_data = Tensor4D(1, 1, 5, 5) # num, channels, width, height
 out_data = Tensor4D(1, 1, 5, 5) 
